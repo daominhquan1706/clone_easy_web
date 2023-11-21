@@ -76,14 +76,46 @@ class _EasyWebViewState extends State<EasyWebView> {
     super.initState();
 
     // Enable hybrid composition.
-    if (Platform.isAndroid) WebView.platform = SurfaceAndroidWebView();
+    // if (Platform.isAndroid) WebView.platform = SurfaceAndroidWebView();
+
+    _webViewController = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onProgress: (int progress) {},
+          onPageStarted: (String url) {
+            widget.onLoaded();
+          },
+          onPageFinished: (String url) {},
+          onWebResourceError: (WebResourceError error) {},
+          onNavigationRequest: (NavigationRequest navigationRequest) async {
+            if (widget.webNavigationDelegate == null) {
+              return NavigationDecision.navigate;
+            }
+
+            final webNavigationDecision =
+                await widget.webNavigationDelegate!(WebNavigationRequest(navigationRequest.url));
+            return (webNavigationDecision == WebNavigationDecision.prevent)
+                ? NavigationDecision.prevent
+                : NavigationDecision.navigate;
+          },
+        ),
+      );
+    if (widget.crossWindowEvents.isNotEmpty == true) {
+      for (var crossWindowEvent in widget.crossWindowEvents) {
+        _webViewController.addJavaScriptChannel(
+          crossWindowEvent.name,
+          onMessageReceived: (javascriptMessage) =>
+              crossWindowEvent.eventAction(javascriptMessage.message),
+        );
+      }
+    }
   }
 
   @override
   void didUpdateWidget(EasyWebView oldWidget) {
     if (oldWidget.src != widget.src) {
-      _webViewController.loadUrl(_updateUrl(widget.src),
-          headers: widget.headers);
+      _webViewController.loadRequest(Uri.parse(_updateUrl(widget.src)));
     }
     if (oldWidget.height != widget.height) {
       if (mounted) setState(() {});
@@ -97,12 +129,10 @@ class _EasyWebViewState extends State<EasyWebView> {
   String _updateUrl(String url) {
     String _src = url;
     if (widget.isMarkdown) {
-      _src = "data:text/html;charset=utf-8," +
-          Uri.encodeComponent(EasyWebViewImpl.md2Html(url));
+      _src = "data:text/html;charset=utf-8," + Uri.encodeComponent(EasyWebViewImpl.md2Html(url));
     }
     if (widget.isHtml) {
-      _src = "data:text/html;charset=utf-8," +
-          Uri.encodeComponent(EasyWebViewImpl.wrapHtml(url));
+      _src = "data:text/html;charset=utf-8," + Uri.encodeComponent(EasyWebViewImpl.wrapHtml(url));
     }
     widget.onLoaded();
     return _src;
@@ -136,36 +166,37 @@ class _EasyWebViewState extends State<EasyWebView> {
             isSelectable: widget.widgetsTextSelectable,
           );
         }
-        return WebView(
+        return WebViewWidget(
           key: widget.key,
-          initialUrl: _updateUrl(src),
-          javascriptMode: JavascriptMode.unrestricted,
-          onWebViewCreated: (webViewController) {
-            _webViewController = webViewController;
-            widget.onLoaded();
-          },
-          navigationDelegate: (navigationRequest) async {
-            if (widget.webNavigationDelegate == null) {
-              return NavigationDecision.navigate;
-            }
+          controller: _webViewController,
+          // initialUrl: _updateUrl(src),
+          // javascriptMode: JavascriptMode.unrestricted,
+          // onWebViewCreated: (webViewController) {
+          //   _webViewController = webViewController;
+          //   widget.onLoaded();
+          // },
+          // navigationDelegate: (navigationRequest) async {
+          //   if (widget.webNavigationDelegate == null) {
+          //     return NavigationDecision.navigate;
+          //   }
 
-            final webNavigationDecision = await widget.webNavigationDelegate!(
-                WebNavigationRequest(navigationRequest.url));
-            return (webNavigationDecision == WebNavigationDecision.prevent)
-                ? NavigationDecision.prevent
-                : NavigationDecision.navigate;
-          },
-          javascriptChannels: widget.crossWindowEvents.isNotEmpty
-              ? widget.crossWindowEvents
-                  .map(
-                    (crossWindowEvent) => JavascriptChannel(
-                      name: crossWindowEvent.name,
-                      onMessageReceived: (javascriptMessage) => crossWindowEvent
-                          .eventAction(javascriptMessage.message),
-                    ),
-                  )
-                  .toSet()
-              : Set<JavascriptChannel>(),
+          //   final webNavigationDecision =
+          //       await widget.webNavigationDelegate!(WebNavigationRequest(navigationRequest.url));
+          //   return (webNavigationDecision == WebNavigationDecision.prevent)
+          //       ? NavigationDecision.prevent
+          //       : NavigationDecision.navigate;
+          // },
+          // javascriptChannels: widget.crossWindowEvents.isNotEmpty
+          //     ? widget.crossWindowEvents
+          //         .map(
+          //           (crossWindowEvent) => JavascriptChannel(
+          //             name: crossWindowEvent.name,
+          //             onMessageReceived: (javascriptMessage) =>
+          //                 crossWindowEvent.eventAction(javascriptMessage.message),
+          //           ),
+          //         )
+          //         .toSet()
+          //     : Set<JavascriptChannel>(),
         );
       },
     );
